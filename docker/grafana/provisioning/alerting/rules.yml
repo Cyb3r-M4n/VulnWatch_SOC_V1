@@ -1,0 +1,121 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: VulnWatch SOC
+    folder: VulnWatch SOC
+    interval: 1m
+    rules:
+      - uid: vw-critical-findings
+        title: Critical findings detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: postgres
+            model:
+              format: table
+              rawQuery: true
+              rawSql: SELECT critical_findings AS value FROM dashboard_stats;
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  type: query
+              refId: C
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: Findings CRITICAL actifs — ouvrir la file de remediation.
+        labels:
+          severity: critical
+          team: cybersec
+
+      - uid: vw-kev-findings
+        title: KEV findings detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: postgres
+            model:
+              format: table
+              rawQuery: true
+              rawSql: SELECT kev_findings AS value FROM dashboard_stats;
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  type: query
+              refId: C
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: Findings CISA KEV actifs — prioriser la validation cybersec.
+        labels:
+          severity: critical
+          team: cybersec
+
+      - uid: vw-pending-validation
+        title: Remediations pending cybersec validation
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: postgres
+            model:
+              format: table
+              rawQuery: true
+              rawSql: SELECT pending_validations AS value FROM dashboard_stats;
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  type: query
+              refId: C
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: Propositions de correctifs en attente de validation ingénieur.
+        labels:
+          severity: warning
+          team: cybersec

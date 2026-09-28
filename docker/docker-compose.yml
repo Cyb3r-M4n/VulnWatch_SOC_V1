@@ -1,0 +1,259 @@
+services:
+  # 1. PostgreSQL - Base de données applicative VulnWatch
+  postgres:
+    image: postgres:15-alpine
+    container_name: vulnwatch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # 2. MySQL - Base Fleet uniquement
+  mysql:
+    image: mysql:8.0
+    container_name: vulnwatch-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # 2b. Redis - requis par Fleet
+  redis:
+    image: redis:7-alpine
+    container_name: vulnwatch-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # 3. Fleet - Gestion des agents OSQuery
+  fleet:
+    image: fleetdm/fleet:latest
+    container_name: vulnwatch-fleet
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Preparing Fleet database..."
+        fleet prepare db --no-prompt
+        echo "Starting Fleet..."
+        exec fleet serve
+    environment:
+      FLEET_MYSQL_ADDRESS: mysql:3306
+      FLEET_MYSQL_DATABASE: ${MYSQL_DATABASE}
+      FLEET_MYSQL_USERNAME: ${MYSQL_USER}
+      FLEET_MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      FLEET_REDIS_ADDRESS: redis:6379
+      FLEET_SERVER_ADDRESS: 0.0.0.0:8080
+      FLEET_AUTH_JWT_KEY: ${FLEET_TOKEN}
+      FLEET_LOGGING_JSON: "true"
+      FLEET_SERVER_TLS: "false"
+      TZ: ${TZ}
+    volumes:
+      - fleet-data:/var/lib/fleet
+    ports:
+      - "${FLEET_PORT}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # 4. n8n - Orchestration (SQLite dédié, isolé de la DB app)
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: vulnwatch-n8n
+    restart: unless-stopped
+    environment:
+      N8N_PORT: ${N8N_PORT}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: ${N8N_HOST}
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      N8N_USER_FOLDER: /home/node/.n8n
+      GENERIC_TIMEZONE: ${TZ}
+      TZ: ${TZ}
+      FLEET_URL: ${FLEET_URL}
+      FLEET_TOKEN: ${FLEET_TOKEN}
+      NVD_API_KEY: ${NVD_API_KEY}
+      ENGINE_URL: http://engine:8000
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PORT: "5432"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    ports:
+      - "${N8N_PORT}:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      engine:
+        condition: service_healthy
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # 5. VulnWatch Engine - API Python
+  engine:
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    container_name: vulnwatch-engine
+    restart: unless-stopped
+    environment:
+      ENGINE_PORT: ${ENGINE_PORT}
+      ENGINE_SECRET_KEY: ${ENGINE_SECRET_KEY}
+      ENGINE_DEBUG: ${ENGINE_DEBUG}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PORT: 5432
+      TZ: ${TZ}
+    volumes:
+      - engine-data:/app/data
+      - ../reports:/app/reports
+    ports:
+      - "${ENGINE_PORT}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # 6. Grafana - Dashboards + alertes UI (métadata sqlite locale)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vulnwatch-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT}
+      GF_SERVER_HTTP_PORT: 3000
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: ""
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vulnwatch-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/postgres
+  mysql-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/mysql
+  fleet-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/fleet
+  n8n-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/n8n
+  engine-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/engine
+  grafana-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/grafana
+
+networks:
+  vulnwatch-network:
+    driver: bridge
+    name: vulnwatch-network

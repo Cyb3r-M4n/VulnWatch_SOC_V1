@@ -1,0 +1,61 @@
+# Secrets & runtime data — NEVER commit
+docker/.env
+volumes/**
+!volumes/README.md
+artifacts/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+
+# Generated reports
+reports/*.pdf
+reports/*.html
+!reports/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg
+
+# Logs
+logs/
+*.log
+volumes/**/*.log
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Fleet/Orbit packages
+fleet-osquery_*.deb
+fleet-osquery_*.msi
+fleet-osquery_*.pkg
+orbit-package*/
+*.deb
+
+# Backups
+*.bak
+*.tmp

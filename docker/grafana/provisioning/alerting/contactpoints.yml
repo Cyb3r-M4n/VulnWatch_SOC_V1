@@ -1,0 +1,4 @@
+# V1 : alertes visibles dans Grafana Alerting UI uniquement (pas SMTP).
+# Les règles dans rules.yml basculent en état "firing" consultable dans Alerting.
+# Contact points email/Slack = roadmap V2.
+apiVersion: 1

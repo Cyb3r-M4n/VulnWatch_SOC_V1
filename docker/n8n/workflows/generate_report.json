@@ -1,0 +1,328 @@
+{
+  "name": "Generate Report",
+  "nodes": [
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "report_name",
+              "value": "vulnwatch-report-{{ new Date().toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "generated_at",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1",
+      "name": "Initialize Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "query": "SELECT * FROM dashboard_stats;",
+        "values": []
+      },
+      "id": "2",
+      "name": "Get Dashboard Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        450,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT * FROM top_exposed_assets;",
+        "values": []
+      },
+      "id": "3",
+      "name": "Get Top Assets",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        450,
+        350
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT * FROM top_vulnerable_software;",
+        "values": []
+      },
+      "id": "4",
+      "name": "Get Top Software",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        450,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT * FROM active_kev_findings;",
+        "values": []
+      },
+      "id": "5",
+      "name": "Get KEV Findings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        450,
+        650
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT * FROM risk_distribution;",
+        "values": []
+      },
+      "id": "6",
+      "name": "Get Risk Distribution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        450,
+        800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "7",
+      "name": "Merge Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        700,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stats = $input.all()[0].json;\nconst assets = $input.all()[1].json;\nconst software = $input.all()[2].json;\nconst kev = $input.all()[3].json;\nconst risk = $input.all()[4].json;\n\nreturn {\n  report_name: $node['Initialize Report'].json.report_name,\n  generated_at: $node['Initialize Report'].json.generated_at,\n  stats: stats,\n  top_assets: assets,\n  top_software: software,\n  kev_findings: kev,\n  risk_distribution: risk,\n  summary: {\n    total_findings: stats.total_findings,\n    critical: stats.critical_findings,\n    high: stats.high_findings,\n    medium: stats.medium_findings,\n    low: stats.low_findings,\n    kev_count: stats.kev_findings\n  }\n};"
+      },
+      "id": "8",
+      "name": "Prepare Report Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "htmlContent": "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <title>VulnWatch Report</title>\n  <style>\n    body { font-family: Arial, sans-serif; margin: 40px; }\n    h1 { color: #1a73e8; border-bottom: 3px solid #1a73e8; padding-bottom: 10px; }\n    h2 { color: #333; margin-top: 30px; }\n    .stats { display: flex; gap: 20px; flex-wrap: wrap; }\n    .stat-box { background: #f5f5f5; padding: 15px; border-radius: 8px; min-width: 120px; }\n    .stat-box .number { font-size: 28px; font-weight: bold; color: #1a73e8; }\n    .stat-box .label { color: #666; font-size: 14px; }\n    table { width: 100%; border-collapse: collapse; margin: 15px 0; }\n    th { background: #1a73e8; color: white; padding: 10px; text-align: left; }\n    td { padding: 8px 10px; border-bottom: 1px solid #ddd; }\n    .critical { color: #d32f2f; font-weight: bold; }\n    .high { color: #f57c00; font-weight: bold; }\n    .medium { color: #fbc02d; font-weight: bold; }\n    .low { color: #388e3c; font-weight: bold; }\n    .footer { margin-top: 40px; font-size: 12px; color: #999; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }\n  </style>\n</head>\n<body>\n  <h1>🛡️ VulnWatch SOC - Rapport de Sécurité</h1>\n  <p><strong>Généré le :</strong> {{ $json.generated_at }}</p>\n  <p><strong>Rapport :</strong> {{ $json.report_name }}</p>\n\n  <h2>📊 Résumé Exécutif</h2>\n  <div class=\"stats\">\n    <div class=\"stat-box\"><div class=\"number\">{{ $json.summary.total_findings }}</div><div class=\"label\">Total Findings</div></div>\n    <div class=\"stat-box\"><div class=\"number\" style=\"color:#d32f2f;\">{{ $json.summary.critical }}</div><div class=\"label\">Critiques</div></div>\n    <div class=\"stat-box\"><div class=\"number\" style=\"color:#f57c00;\">{{ $json.summary.high }}</div><div class=\"label\">Élevées</div></div>\n    <div class=\"stat-box\"><div class=\"number\" style=\"color:#fbc02d;\">{{ $json.summary.medium }}</div><div class=\"label\">Moyennes</div></div>\n    <div class=\"stat-box\"><div class=\"number\" style=\"color:#388e3c;\">{{ $json.summary.low }}</div><div class=\"label\">Basses</div></div>\n    <div class=\"stat-box\"><div class=\"number\" style=\"color:#d32f2f;\">{{ $json.summary.kev_count }}</div><div class=\"label\">KEV Actives</div></div>\n  </div>\n\n  <h2>🔥 Top Machines Exposées</h2>\n  <table>\n    <tr><th>Hostname</th><th>Findings</th><th>Critiques</th><th>Élevées</th><th>Risque Max</th></tr>\n    {{#each $json.top_assets}}\n    <tr>\n      <td>{{this.hostname}}</td>\n      <td>{{this.finding_count}}</td>\n      <td class=\"critical\">{{this.critical_count}}</td>\n      <td class=\"high\">{{this.high_count}}</td>\n      <td><strong>{{this.highest_risk}}</strong></td>\n    </tr>\n    {{/each}}\n  </table>\n\n  <h2>📦 Top Logiciels Vulnérables</h2>\n  <table>\n    <tr><th>Logiciel</th><th>Version</th><th>Machines</th><th>Findings</th><th>CVSS Max</th></tr>\n    {{#each $json.top_software}}\n    <tr>\n      <td>{{this.name}}</td>\n      <td>{{this.version}}</td>\n      <td>{{this.affected_assets}}</td>\n      <td>{{this.finding_count}}</td>\n      <td>{{this.max_cvss}}</td>\n    </tr>\n    {{/each}}\n  </table>\n\n  <h2>🔴 KEV Actives (Known Exploited Vulnerabilities)</h2>\n  <table>\n    <tr><th>Machine</th><th>Logiciel</th><th>Version</th><th>CVE</th><th>CVSS</th><th>Risque</th></tr>\n    {{#each $json.kev_findings}}\n    <tr>\n      <td>{{this.hostname}}</td>\n      <td>{{this.software_name}}</td>\n      <td>{{this.software_version}}</td>\n      <td><strong>{{this.cve_id}}</strong></td>\n      <td>{{this.cvss_score}}</td>\n      <td class=\"critical\">{{this.risk_level}}</td>\n    </tr>\n    {{/each}}\n  </table>\n\n  <h2>🧩 Distribution des Risques</h2>\n  <table>\n    <tr><th>Niveau</th><th>Nombre</th><th>Pourcentage</th></tr>\n    {{#each $json.risk_distribution}}\n    <tr>\n      <td><strong>{{this.risk_level}}</strong></td>\n      <td>{{this.count}}</td>\n      <td>{{this.percentage}}%</td>\n    </tr>\n    {{/each}}\n  </table>\n\n  <div class=\"footer\">\n    <p>VulnWatch SOC - Rapport généré automatiquement</p>\n    <p>Plateforme de corrélation des vulnérabilités</p>\n  </div>\n</body>\n</html>",
+        "options": {
+          "format": "pdf"
+        }
+      },
+      "id": "9",
+      "name": "Generate PDF",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "query": "INSERT INTO reports (report_name, generated_at, asset_count, finding_count, critical, high, medium, low, file_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;",
+        "values": [
+          "={{ $json.report_name }}",
+          "={{ $json.generated_at }}",
+          "={{ $json.stats.total_assets }}",
+          "={{ $json.summary.total_findings }}",
+          "={{ $json.summary.critical }}",
+          "={{ $json.summary.high }}",
+          "={{ $json.summary.medium }}",
+          "={{ $json.summary.low }}",
+          "=/app/reports/{{ $json.report_name }}.pdf"
+        ]
+      },
+      "id": "10",
+      "name": "Save Report Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Initialize Report": {
+      "main": [
+        [
+          {
+            "node": "Get Dashboard Stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Top Assets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Top Software",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get KEV Findings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Risk Distribution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dashboard Stats": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top Assets": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Top Software": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Get KEV Findings": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Get Risk Distribution": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report Data": {
+      "main": [
+        [
+          {
+            "node": "Generate PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PDF": {
+      "main": [
+        [
+          {
+            "node": "Save Report Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0
+}
