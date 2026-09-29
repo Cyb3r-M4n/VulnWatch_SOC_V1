@@ -9,6 +9,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from ..database.connection import execute_command, execute_query, execute_query_row
+from ..services.wazuh import WazuhInventoryError, sync_inventory
 
 router = APIRouter()
 
@@ -71,6 +72,35 @@ class ValidationRequest(BaseModel):
 class MitigateRequest(BaseModel):
     mitigated_by: str = Field(..., min_length=1)
     notes: Optional[str] = None
+
+
+class NvdCveIn(BaseModel):
+    cve_id: str
+    product: Optional[str] = None
+    vendor: Optional[str] = None
+    affected_versions: Optional[List[str]] = None
+    cvss_score: Optional[float] = None
+    severity: Optional[str] = None
+    description: Optional[str] = None
+    published_date: Optional[str] = None
+    modified_date: Optional[str] = None
+    reference_url: Optional[str] = None
+
+
+class KevCveIn(BaseModel):
+    cve_id: str
+    product: Optional[str] = None
+    vendor: Optional[str] = None
+    description: Optional[str] = None
+    published_date: Optional[str] = None
+    reference_url: Optional[str] = None
+
+
+class ScanFinish(BaseModel):
+    status: str = Field(..., pattern="^(success|failed)$")
+    records_added: int = 0
+    records_updated: int = 0
+    error_message: Optional[str] = None
 
 
 # ============================================
@@ -228,6 +258,151 @@ async def mark_finding_mitigated(finding_id: int, body: MitigateRequest):
 # ============================================
 # Corrélation + propositions
 # ============================================
+
+# ============================================
+# Scan quotidien (n8n → Engine, sans credential Postgres)
+# ============================================
+
+@router.post("/scans/start")
+async def start_scan():
+    try:
+        row = await execute_query_row(
+            """
+            INSERT INTO scan_history (scan_type, status, started_at)
+            VALUES ('daily_scan', 'running', CURRENT_TIMESTAMP)
+            RETURNING id
+            """
+        )
+        return {"id": row["id"]}
+    except Exception as e:
+        logger.error(f"Erreur start scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scans/{scan_id}/finish")
+async def finish_scan(scan_id: int, body: ScanFinish):
+    try:
+        row = await execute_query_row(
+            "SELECT id FROM scan_history WHERE id = $1", scan_id
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Scan introuvable")
+        await execute_command(
+            """
+            UPDATE scan_history
+            SET status = $2,
+                finished_at = CURRENT_TIMESTAMP,
+                records_added = $3,
+                records_updated = $4,
+                error_message = $5
+            WHERE id = $1
+            """,
+            scan_id,
+            body.status,
+            body.records_added,
+            body.records_updated,
+            body.error_message,
+        )
+        return {"id": scan_id, "status": body.status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur finish scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cves/nvd")
+async def upsert_nvd_cves(items: List[NvdCveIn]):
+    upserted = 0
+    try:
+        for item in items:
+            if not item.cve_id:
+                continue
+            await execute_command(
+                """
+                INSERT INTO cves (
+                    cve_id, product, vendor, affected_versions, cvss_score, severity,
+                    description, published_date, modified_date, reference_url, updated_at
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (cve_id) DO UPDATE SET
+                    product = COALESCE(EXCLUDED.product, cves.product),
+                    vendor = COALESCE(EXCLUDED.vendor, cves.vendor),
+                    affected_versions = COALESCE(EXCLUDED.affected_versions, cves.affected_versions),
+                    cvss_score = COALESCE(EXCLUDED.cvss_score, cves.cvss_score),
+                    severity = COALESCE(EXCLUDED.severity, cves.severity),
+                    description = COALESCE(EXCLUDED.description, cves.description),
+                    modified_date = COALESCE(EXCLUDED.modified_date, cves.modified_date),
+                    reference_url = COALESCE(EXCLUDED.reference_url, cves.reference_url),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                item.cve_id,
+                item.product,
+                item.vendor,
+                item.affected_versions,
+                item.cvss_score,
+                item.severity,
+                item.description,
+                item.published_date,
+                item.modified_date,
+                item.reference_url,
+            )
+            upserted += 1
+        return {"upserted": upserted}
+    except Exception as e:
+        logger.error(f"Erreur upsert NVD: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cves/kev")
+async def upsert_kev_cves(items: List[KevCveIn]):
+    upserted = 0
+    try:
+        for item in items:
+            if not item.cve_id:
+                continue
+            await execute_command(
+                """
+                INSERT INTO cves (
+                    cve_id, product, vendor, description, published_date,
+                    kev, severity, reference_url, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5::date, true, 'CRITICAL', $6, CURRENT_TIMESTAMP)
+                ON CONFLICT (cve_id) DO UPDATE SET
+                    kev = true,
+                    product = COALESCE(EXCLUDED.product, cves.product),
+                    vendor = COALESCE(EXCLUDED.vendor, cves.vendor),
+                    description = COALESCE(EXCLUDED.description, cves.description),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                item.cve_id,
+                item.product,
+                item.vendor,
+                item.description,
+                item.published_date,
+                item.reference_url,
+            )
+            upserted += 1
+        return {"upserted": upserted}
+    except Exception as e:
+        logger.error(f"Erreur upsert KEV: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/inventory/sync")
+async def sync_wazuh_inventory():
+    """Synchronise l'inventaire Syscollector du manager Wazuh vers Postgres."""
+    try:
+        return await sync_inventory()
+    except WazuhInventoryError as e:
+        logger.error(f"Inventaire Wazuh: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error(f"Erreur inventaire Wazuh: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/correlation/run", response_model=CorrelationResult)
 async def run_correlation():

@@ -3,7 +3,7 @@
 Plateforme **entreprise** de détection de vulnérabilités :
 
 - collecte automatique des CVE (NVD API 2.0 + CISA KEV)
-- corrélation avec l’inventaire interne (Fleet / OSQuery)
+- corrélation avec l’inventaire interne (agents **Wazuh** / Syscollector)
 - alertes Grafana
 - **propositions de correctifs sans application automatique**
 - validation obligatoire par un ingénieur cybersec avant remediation manuelle
@@ -20,7 +20,7 @@ Plateforme **entreprise** de détection de vulnérabilités :
 4. [Configuration (`.env`)](#configuration-env)
 5. [Accès aux interfaces](#accès-aux-interfaces)
 6. [Configurer n8n](#configurer-n8n)
-7. [Enroller un agent Fleet](#enroller-un-agent-fleet)
+7. [Enroller un agent Wazuh](#enroller-un-agent-wazuh)
 8. [API validation cybersec](#api-validation-cybersec)
 9. [Grafana](#grafana)
 10. [Scripts](#scripts)
@@ -34,20 +34,20 @@ Plateforme **entreprise** de détection de vulnérabilités :
 ## Architecture
 
 ```text
-OSQuery agents ──► Fleet ──┐
-NVD API (24h)  ────────────┼──► n8n ──► PostgreSQL ──► Engine API
-CISA KEV       ────────────┘              │
-                                          ├──► Grafana (alertes UI)
-                                          └──► remediations (approve/reject)
+Wazuh agents ──► Wazuh manager ──┐
+NVD API (24h)  ──────────────────┼──► n8n ──► PostgreSQL ──► Engine API
+CISA KEV       ──────────────────┘              │
+                                                ├──► Grafana (alertes UI)
+                                                └──► remediations (approve/reject)
 ```
 
 | Service | Image / code | Rôle |
 |---------|--------------|------|
 | `postgres` | postgres:15 | Données VulnWatch + corrélation SQL |
-| `engine` | `engine/` (FastAPI) | API findings / remediations |
+| `engine` | `engine/` (FastAPI) | API findings / remediations / sync inventaire |
 | `n8n` | n8nio/n8n | Orchestration quotidienne |
 | `grafana` | grafana | Dashboards + alert rules |
-| `mysql` + `redis` + `fleet` | FleetDM | Inventaire agents OSQuery |
+| `wazuh-manager` | wazuh/wazuh-manager:4.14 | Enrollment + Syscollector (pas d’indexer) |
 
 ---
 
@@ -59,12 +59,12 @@ CISA KEV       ────────────┘              │
   - `3000` Grafana
   - `5678` n8n
   - `8000` Engine (ou `8001` si modifié dans `.env`)
-  - `8080` Fleet
+  - `1514` Wazuh agents
+  - `1515` Wazuh enrollment
+  - `55000` API Wazuh (localhost uniquement)
   - `5433` Postgres (mappé, évite conflit avec Postgres local `:5432`)
-  - `3307` MySQL Fleet
-  - `6379` Redis
 - Clé API NVD (prod) : https://nvd.nist.gov/developers/request-an-api-key
-- Accès Internet sortant pour NVD, CISA KEV, et (agents) `https://tuf.fleetctl.com`
+- Accès Internet sortant pour NVD, CISA KEV, et le paquet `wazuh-agent`
 
 ---
 
@@ -102,9 +102,10 @@ Fichier : [`docker/.env.example`](docker/.env.example) → copier vers `docker/.
 |----------|-------------|
 | `POSTGRES_*` | DB applicative VulnWatch |
 | `POSTGRES_HOST_PORT` | Port hôte Postgres (défaut `5433`) |
-| `MYSQL_*` / `MYSQL_HOST_PORT` | DB Fleet (défaut hôte `3307`) |
-| `FLEET_PORT` / `FLEET_TOKEN` | UI Fleet + JWT |
-| `FLEET_URL` | URL interne Docker pour n8n (`http://fleet:8080`) |
+| `WAZUH_API_URL` / `WAZUH_API_USER` / `WAZUH_API_PASSWORD` | API manager (Engine) |
+| `WAZUH_ENROLL_PASSWORD` | Mot de passe d’enrollment agents |
+| `WAZUH_AGENT_PORT` / `WAZUH_ENROLL_PORT` | Ports agents `1514` / `1515` |
+| `WAZUH_API_HOST_PORT` | API locale `55000` |
 | `N8N_*` | Port / encryption key n8n |
 | `ENGINE_PORT` | Port API (défaut `8000`) |
 | `GRAFANA_ADMIN_*` | Login Grafana |
@@ -121,11 +122,11 @@ Remplacer `localhost` par l’IP du serveur si accès LAN (ex. `192.168.1.81`).
 
 | Service | URL | Auth |
 |---------|-----|------|
-| Grafana | http://HOST:3000 | `GRAFANA_ADMIN_USER` / `PASSWORD` |
+| Grafana | http://HOST:3000/d/vulnwatch-soc | `GRAFANA_ADMIN_USER` / `PASSWORD` |
 | Dashboard ops | http://HOST:3000/d/vulnwatch-soc | — |
 | n8n | http://HOST:5678 | compte créé au 1er login |
 | Engine OpenAPI | http://HOST:8000/docs | — |
-| Fleet | http://HOST:8080 | setup admin au 1er accès |
+| Wazuh API | https://HOST:55000 (localhost) | `WAZUH_API_USER` / `PASSWORD` |
 
 Vérification rapide :
 
@@ -141,56 +142,55 @@ curl -s http://localhost:8000/api/v1/dashboard/stats | jq
 1. Ouvrir http://HOST:5678 → créer le compte owner
 2. **Import** → fichier  
    `docker/n8n/workflows/daily_vulnerability_scan.json`
-3. Credential **Postgres** :
-   - Host : `postgres`
-   - Port : `5432`
-   - Database / User / Password : valeurs de `docker/.env`
-   - SSL : **disable**
-4. Assigner le credential à tous les nœuds Postgres
-5. **Publish / Active** le workflow
-6. Test : **Execute workflow**
+3. **Publish / Active** le workflow
+4. Test : **Execute workflow**
+
+Aucun credential Postgres n8n : NVD, KEV, Wazuh et la corrélation passent par l’Engine (`http://engine:8000`).
 
 Le workflow (toutes les 24h) :
 
 1. Pull NVD (fenêtre 24h) + CISA KEV  
-2. Inventaire Fleet (si agents)  
+2. Inventaire Wazuh (`POST /api/v1/inventory/sync`)  
 3. `POST /api/v1/correlation/run` → findings + propositions  
 4. Journal `scan_history`  
 **Pas d’email / pas d’auto-patch en V1.**
 
 ---
 
-## Enroller un agent Fleet
+## Enroller un agent Wazuh
 
-Fleet est en **HTTP** (`FLEET_SERVER_TLS=false`) → flag `--insecure` obligatoire.
+Le manager écoute **1514/tcp** (données) et **1515/tcp** (enrollment).  
+Pas de dashboard Wazuh : l’inventaire est lu par l’Engine via l’API `55000`.
 
-### Générer le package (machine AVEC Internet)
+Remplacer `MANAGER_IP` par l’IP LAN du serveur (ex. `192.168.1.81`).  
+Le mot de passe est `WAZUH_ENROLL_PASSWORD` dans `docker/.env`.
 
-`fleetctl package` télécharge depuis `https://tuf.fleetctl.com` (peut prendre 10–20 min, peu de logs après `stat file`).
-
-```bash
-# Sur un host avec bon débit Internet (souvent mieux que la VM)
-fleetctl package --type=deb \
-  --fleet-url=http://192.168.1.81:8080 \
-  --enroll-secret='<SECRET_UI_FLEET>' \
-  --insecure \
-  -verbose
-```
-
-Le secret se trouve dans Fleet UI : **Settings → Organization settings → Enroll secret**.
-
-### Installer dans la VM / endpoint
+### Debian / Ubuntu / Kali
 
 ```bash
-sudo dpkg -i fleet-osquery_*.deb
-sudo systemctl status orbit || sudo systemctl status fleet-osquery
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import
+sudo chmod 644 /usr/share/keyrings/wazuh.gpg
+echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
+sudo apt-get update
+sudo WAZUH_MANAGER='MANAGER_IP' WAZUH_REGISTRATION_PASSWORD='<WAZUH_ENROLL_PASSWORD>' apt-get install wazuh-agent
+sudo systemctl daemon-reload
+sudo systemctl enable --now wazuh-agent
+sudo systemctl status wazuh-agent
 ```
 
-Vérifier dans Fleet → **Hosts**.
+### Vérifier
 
-### Si la VM n’a pas Internet sortant
+```bash
+# API locale (401 sans auth = manager up)
+curl -k -s -o /dev/null -w '%{http_code}\n' https://127.0.0.1:55000/
 
-Générer le `.deb` ailleurs, puis `scp` vers la VM (le package ne peut pas se générer offline).
+# Sync inventaire vers Postgres
+curl -s -X POST http://localhost:8000/api/v1/inventory/sync | jq
+```
+
+Les agents `active` apparaissent dans `assets` / `software` / `processes` après le sync (ou le workflow n8n).
+
+Le **module vulnérabilités Wazuh est désactivé** : NVD + KEV + corrélation restent dans VulnWatch.
 
 ---
 
@@ -245,14 +245,21 @@ curl -s -X POST http://localhost:8000/api/v1/findings/ID/mitigated \
 
 ## Dépannage
 
-**Port already in use (5432/3306)**  
-Déjà géré via `POSTGRES_HOST_PORT=5433` et `MYSQL_HOST_PORT=3307`.
+**Port already in use (5432)**  
+Déjà géré via `POSTGRES_HOST_PORT=5433`.
 
 **Grafana permission denied**  
 `start.sh` réapplique `chown 472:472` sur `volumes/grafana`.
 
-**Fleet unhealthy alors que /healthz = 200**  
-Healthcheck utilise `wget` (pas `curl`, absent de l’image).
+**Wazuh API 000 / unhealthy**  
+Attendre le `start_period` (~2 min). Logs :  
+`docker compose -f docker/docker-compose.yml --env-file docker/.env logs wazuh-manager`
+
+**Agent `wazuh-agentd: Unable to connect`**  
+Vérifier `WAZUH_MANAGER` = IP du serveur (pas `localhost` depuis une autre machine), ports `1514`/`1515` ouverts.
+
+**Inventaire vide**  
+Aucun agent enrollé : le seed démo Postgres reste utilisé. Après enrollment : `POST /api/v1/inventory/sync`.
 
 **Postgres schéma manquant**  
 ```bash
@@ -261,9 +268,6 @@ Healthcheck utilise `wget` (pas `curl`, absent de l’image).
 
 **n8n « server does not support SSL »**  
 Credential Postgres → SSL = disable.
-
-**fleetctl package bloqué après `stat file`**  
-Download TUF en cours ou réseau lent — attendre, ou générer le `.deb` sur une autre machine.
 
 **Logs**  
 ```bash
@@ -285,7 +289,7 @@ VulnWatch_SOC_V1/
 │   ├── init-scripts/         # SQL bootstrap + remediations + seed
 │   ├── n8n/workflows/        # workflow quotidien
 │   ├── grafana/              # dashboards + provisioning
-│   └── configs/fleet/
+│   └── configs/wazuh/        # agent.conf + entrypoint manager
 ├── engine/                   # API FastAPI
 ├── scripts/                  # start / stop / status
 ├── reports/                  # sorties (gitkeep)
@@ -330,7 +334,7 @@ git push -u origin main
 
 - Notifications email / Slack / Teams  
 - PDF reporting  
-- SSO Grafana / Fleet  
+- SSO Grafana  
 - Ticketing (Jira / ServiceNow)  
 - HA  
 - **Toujours pas d’auto-patch** (principe produit)

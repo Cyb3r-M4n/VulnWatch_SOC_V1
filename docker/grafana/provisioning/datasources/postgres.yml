@@ -1,5 +1,10 @@
-# Datasource applicative VulnWatch (lecture seule des vues SQL)
+# Datasource applicative VulnWatch
+# Grafana 13+ : le nom de base DOIT être dans jsonData.database
 apiVersion: 1
+
+deleteDatasources:
+  - name: PostgreSQL
+    orgId: 1
 
 datasources:
   - name: PostgreSQL
@@ -7,7 +12,6 @@ datasources:
     type: postgres
     access: proxy
     url: postgres:5432
-    database: ${POSTGRES_DB}
     user: ${POSTGRES_USER}
     secureJsonData:
       password: ${POSTGRES_PASSWORD}
@@ -15,6 +19,7 @@ datasources:
       sslmode: disable
       postgresVersion: 1500
       timescaledb: false
+      database: ${POSTGRES_DB}
     isDefault: true
-    editable: false
-    version: 1
+    editable: true
+    version: 2

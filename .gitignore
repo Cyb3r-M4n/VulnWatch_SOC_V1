@@ -49,11 +49,10 @@ volumes/**/*.log
 .DS_Store
 Thumbs.db
 
-# Fleet/Orbit packages
-fleet-osquery_*.deb
-fleet-osquery_*.msi
-fleet-osquery_*.pkg
-orbit-package*/
+# Wazuh agent packages
+wazuh-agent*.deb
+wazuh-agent*.rpm
+wazuh-agent*.msi
 *.deb
 
 # Backups

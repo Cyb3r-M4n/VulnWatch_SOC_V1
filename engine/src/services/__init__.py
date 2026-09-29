@@ -1,1 +1,2 @@
-# Services package (placeholders — corrélation / remediations en PostgreSQL)
+# Services package
+# Inventaire : services/wazuh.py (Syscollector → Postgres)

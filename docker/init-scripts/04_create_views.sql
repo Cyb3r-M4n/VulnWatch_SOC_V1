@@ -1,22 +1,9 @@
 -- 04-create-views.sql
 -- Vues pour Grafana et rapports
+-- dashboard_stats enrichi est défini dans 06_remediations.sql (pending_validations, scans)
 
--- Vue 1 : Statistiques globales
-CREATE OR REPLACE VIEW dashboard_stats AS
-SELECT 
-    (SELECT COUNT(*) FROM assets WHERE status = 'active') AS total_assets,
-    (SELECT COUNT(*) FROM assets) AS total_assets_all,
-    (SELECT COUNT(*) FROM software) AS total_software,
-    (SELECT COUNT(*) FROM cves) AS total_cves,
-    (SELECT COUNT(*) FROM processes WHERE status = 'RUNNING') AS total_processes,
-    (SELECT COUNT(*) FROM ports) AS total_ports,
-    (SELECT COUNT(*) FROM findings WHERE risk_level = 'CRITICAL' AND status = 'active') AS critical_findings,
-    (SELECT COUNT(*) FROM findings WHERE risk_level = 'HIGH' AND status = 'active') AS high_findings,
-    (SELECT COUNT(*) FROM findings WHERE risk_level = 'MEDIUM' AND status = 'active') AS medium_findings,
-    (SELECT COUNT(*) FROM findings WHERE risk_level = 'LOW' AND status = 'active') AS low_findings,
-    (SELECT COUNT(*) FROM findings WHERE status = 'active') AS total_findings,
-    (SELECT COUNT(*) FROM cves WHERE kev = true) AS kev_count,
-    (SELECT COUNT(*) FROM findings WHERE status = 'active' AND cve_id IN (SELECT id FROM cves WHERE kev = true)) AS kev_findings;
+DROP VIEW IF EXISTS top_exposed_assets;
+DROP VIEW IF EXISTS active_kev_findings;
 
 -- Vue 2 : Top machines exposées
 CREATE OR REPLACE VIEW top_exposed_assets AS
@@ -29,7 +16,21 @@ SELECT
     COUNT(CASE WHEN f.risk_level = 'HIGH' THEN 1 END) AS high_count,
     COUNT(CASE WHEN f.risk_level = 'MEDIUM' THEN 1 END) AS medium_count,
     COUNT(CASE WHEN f.risk_level = 'LOW' THEN 1 END) AS low_count,
-    MAX(f.risk_level) AS highest_risk,
+    CASE MAX(
+        CASE f.risk_level
+            WHEN 'CRITICAL' THEN 4
+            WHEN 'HIGH' THEN 3
+            WHEN 'MEDIUM' THEN 2
+            WHEN 'LOW' THEN 1
+            ELSE 0
+        END
+    )
+        WHEN 4 THEN 'CRITICAL'
+        WHEN 3 THEN 'HIGH'
+        WHEN 2 THEN 'MEDIUM'
+        WHEN 1 THEN 'LOW'
+        ELSE NULL
+    END AS highest_risk,
     COUNT(DISTINCT p.id) AS process_count,
     COUNT(DISTINCT pt.id) AS open_ports
 FROM assets a
@@ -121,7 +122,7 @@ GROUP BY a.id, a.hostname, a.ip_address, a.os_name, a.os_version, a.architecture
 CREATE OR REPLACE VIEW active_kev_findings AS
 SELECT 
     a.hostname,
-    s.name AS software_name,
+    COALESCE(s.name, NULLIF(replace(f.notes, 'Process: ', ''), ''), '(process)')::varchar(255) AS software_name,
     s.version AS software_version,
     c.cve_id,
     c.cvss_score,
@@ -130,11 +131,11 @@ SELECT
     f.risk_level
 FROM findings f
 JOIN assets a ON f.asset_id = a.id
-JOIN software s ON f.software_id = s.id
+LEFT JOIN software s ON f.software_id = s.id
 JOIN cves c ON f.cve_id = c.id
 WHERE f.status = 'active'
 AND c.kev = true
-ORDER BY c.cvss_score DESC;
+ORDER BY c.cvss_score DESC NULLS LAST;
 
 -- Vue 8 : Top processus vulnérables
 CREATE OR REPLACE VIEW top_vulnerable_processes AS

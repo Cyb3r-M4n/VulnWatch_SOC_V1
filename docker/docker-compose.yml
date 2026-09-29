@@ -23,89 +23,57 @@ services:
       retries: 5
       start_period: 10s
 
-  # 2. MySQL - Base Fleet uniquement
-  mysql:
-    image: mysql:8.0
-    container_name: vulnwatch-mysql
+  # 2. Wazuh manager — inventaire agents (Syscollector). Pas d'indexer / dashboard.
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.14.8
+    container_name: vulnwatch-wazuh
+    hostname: wazuh.manager
     restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    entrypoint: ["/bin/bash", "/usr/local/bin/vulnwatch-wazuh-entrypoint.sh"]
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      API_USERNAME: ${WAZUH_API_USER}
+      API_PASSWORD: ${WAZUH_API_PASSWORD}
+      WAZUH_ENROLL_PASSWORD: ${WAZUH_ENROLL_PASSWORD}
       TZ: ${TZ}
+      AUTO_ENROLLMENT_ENABLED: "true"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - wazuh-api:/var/ossec/api/configuration
+      - wazuh-etc:/var/ossec/etc
+      - wazuh-logs:/var/ossec/logs
+      - wazuh-queue:/var/ossec/queue
+      - wazuh-multigroups:/var/ossec/var/multigroups
+      - wazuh-integrations:/var/ossec/integrations
+      - wazuh-active-response:/var/ossec/active-response/bin
+      - wazuh-agentless:/var/ossec/agentless
+      - wazuh-wodles:/var/ossec/wodles
+      - ./configs/wazuh/docker-entrypoint.sh:/usr/local/bin/vulnwatch-wazuh-entrypoint.sh:ro
+      - ./configs/wazuh/agent.conf:/wazuh-config-mount/etc/shared/default/agent.conf:ro
+      - ./configs/wazuh/entrypoint-scripts:/entrypoint-scripts:ro
     ports:
-      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
+      - "${WAZUH_AGENT_PORT:-1514}:1514"
+      - "${WAZUH_ENROLL_PORT:-1515}:1515"
+      - "127.0.0.1:${WAZUH_API_HOST_PORT:-55000}:55000"
     networks:
       - vulnwatch-network
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # 2b. Redis - requis par Fleet
-  redis:
-    image: redis:7-alpine
-    container_name: vulnwatch-redis
-    restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    ports:
-      - "127.0.0.1:6379:6379"
-    networks:
-      - vulnwatch-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  # 3. Fleet - Gestion des agents OSQuery
-  fleet:
-    image: fleetdm/fleet:latest
-    container_name: vulnwatch-fleet
-    restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -e
-        echo "Preparing Fleet database..."
-        fleet prepare db --no-prompt
-        echo "Starting Fleet..."
-        exec fleet serve
-    environment:
-      FLEET_MYSQL_ADDRESS: mysql:3306
-      FLEET_MYSQL_DATABASE: ${MYSQL_DATABASE}
-      FLEET_MYSQL_USERNAME: ${MYSQL_USER}
-      FLEET_MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      FLEET_REDIS_ADDRESS: redis:6379
-      FLEET_SERVER_ADDRESS: 0.0.0.0:8080
-      FLEET_AUTH_JWT_KEY: ${FLEET_TOKEN}
-      FLEET_LOGGING_JSON: "true"
-      FLEET_SERVER_TLS: "false"
-      TZ: ${TZ}
-    volumes:
-      - fleet-data:/var/lib/fleet
-    ports:
-      - "${FLEET_PORT}:8080"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - vulnwatch-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:55000/ | grep -Eq '401|403'",
+        ]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 90s
+      retries: 8
+      start_period: 120s
 
-  # 4. n8n - Orchestration (SQLite dédié, isolé de la DB app)
+  # 3. n8n - Orchestration (SQLite dédié, isolé de la DB app)
   n8n:
     image: n8nio/n8n:latest
     container_name: vulnwatch-n8n
@@ -118,8 +86,10 @@ services:
       N8N_USER_FOLDER: /home/node/.n8n
       GENERIC_TIMEZONE: ${TZ}
       TZ: ${TZ}
-      FLEET_URL: ${FLEET_URL}
-      FLEET_TOKEN: ${FLEET_TOKEN}
+      N8N_SECURE_COOKIE: "false"
+      N8N_EDITOR_BASE_URL: "${N8N_PROTOCOL}://${N8N_HOST}:${N8N_PORT}"
+      N8N_WEBHOOK_URL: "${N8N_PROTOCOL}://${N8N_HOST}:${N8N_PORT}/"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       NVD_API_KEY: ${NVD_API_KEY}
       ENGINE_URL: http://engine:8000
       POSTGRES_HOST: postgres
@@ -137,6 +107,8 @@ services:
         condition: service_healthy
       engine:
         condition: service_healthy
+      wazuh-manager:
+        condition: service_healthy
     networks:
       - vulnwatch-network
     healthcheck:
@@ -146,7 +118,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # 5. VulnWatch Engine - API Python
+  # 4. VulnWatch Engine - API Python
   engine:
     build:
       context: ../engine
@@ -162,6 +134,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_PORT: 5432
+      WAZUH_API_URL: ${WAZUH_API_URL}
+      WAZUH_API_USER: ${WAZUH_API_USER}
+      WAZUH_API_PASSWORD: ${WAZUH_API_PASSWORD}
       TZ: ${TZ}
     volumes:
       - engine-data:/app/data
@@ -170,6 +145,8 @@ services:
       - "${ENGINE_PORT}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      wazuh-manager:
         condition: service_healthy
     networks:
       - vulnwatch-network
@@ -180,7 +157,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # 6. Grafana - Dashboards + alertes UI (métadata sqlite locale)
+  # 5. Grafana - Dashboards + alertes UI (métadata sqlite locale)
   grafana:
     image: grafana/grafana:latest
     container_name: vulnwatch-grafana
@@ -192,6 +169,10 @@ services:
       GF_SERVER_HTTP_PORT: 3000
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
       GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/vulnwatch-soc-ops.json
+      GF_FEATURE_TOGGLES_newHomePage: "false"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${TZ}
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: ""
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -222,18 +203,60 @@ volumes:
       type: none
       o: bind
       device: ../volumes/postgres
-  mysql-data:
+  wazuh-api:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ../volumes/mysql
-  fleet-data:
+      device: ../volumes/wazuh/api
+  wazuh-etc:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ../volumes/fleet
+      device: ../volumes/wazuh/etc
+  wazuh-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/logs
+  wazuh-queue:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/queue
+  wazuh-multigroups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/multigroups
+  wazuh-integrations:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/integrations
+  wazuh-active-response:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/active-response
+  wazuh-agentless:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/agentless
+  wazuh-wodles:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../volumes/wazuh/wodles
   n8n-data:
     driver: local
     driver_opts:

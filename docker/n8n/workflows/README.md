@@ -2,35 +2,27 @@
 
 ## Workflow principal : `daily_vulnerability_scan.json`
 
-Exécution toutes les **24h** :
+Exécution toutes les **24h**, **séquentielle**, **uniquement via l'API Engine**
+(`ENGINE_URL=http://engine:8000` dans le réseau Docker). Aucun credential Postgres n8n.
 
-1. Collecte CVE NVD API 2.0 (fenêtre glissante 24h) — clé `NVD_API_KEY`
-2. Collecte CISA KEV (feed officiel) — flag `kev`
-3. Inventaire hosts Fleet (si agents enrollés)
-4. Appel Engine `POST /api/v1/correlation/run` → corrélation + **propositions de correctifs**
-5. Journalisation `scan_history`
+1. `POST /api/v1/scans/start`
+2. NVD 24h → `POST /api/v1/cves/nvd`
+3. CISA KEV → `POST /api/v1/cves/kev`
+4. Inventaire Wazuh → `POST /api/v1/inventory/sync`
+5. `POST /api/v1/correlation/run` → findings + propositions
+6. `POST /api/v1/scans/{id}/finish` (`success` seulement si la corrélation répond)
 
-**Pas d'email en V1.** Les alertes et la file de validation sont dans Grafana / API Engine.  
-**Aucun correctif n'est appliqué** — validation cybersec obligatoire.
+**Pas d'email en V1.** Alertes = Grafana. **Aucun patch automatique.**
 
 ## `generate_report.json`
 
-Hors scope V1 (reporting PDF reporté).
+Hors scope V1 (reporting PDF reporté). Les vues SQL utilisées sont les mêmes que Grafana.
 
 ## Installation
 
-1. Ouvrir http://localhost:5678
+1. Ouvrir http://localhost:5678 → créer le compte owner
 2. Import → `docker/n8n/workflows/daily_vulnerability_scan.json`
-3. Créer credential Postgres :
-   - Host: `postgres`
-   - Database / User / Password: valeurs de `docker/.env`
-4. Activer le workflow
-5. Vérifier `NVD_API_KEY` dans `docker/.env` (sinon rate-limit NVD)
+3. **Publish / Active**
+4. `NVD_API_KEY` dans `docker/.env`
 
-## Variables d'environnement
-
-| Variable | Rôle |
-|----------|------|
-| `NVD_API_KEY` | Clé NIST NVD (obligatoire en prod) |
-| `FLEET_URL` / `FLEET_TOKEN` | Inventaire agents |
-| `ENGINE_URL` | `http://engine:8000` |
+Pas de credential Postgres à créer pour le scan quotidien.

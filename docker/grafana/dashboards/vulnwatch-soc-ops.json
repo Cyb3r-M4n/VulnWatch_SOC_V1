@@ -1,6 +1,6 @@
 {
   "uid": "vulnwatch-soc",
-  "title": "VulnWatch SOC \u2014 Operations",
+  "title": "VulnWatch SOC — Operations",
   "tags": [
     "vulnwatch",
     "soc",
@@ -20,7 +20,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Assets actifs",
+      "title": "Assets (Wazuh / seed)",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -36,7 +36,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT total_assets AS value FROM dashboard_stats;"
+          "rawSql": "SELECT total_assets AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -92,7 +97,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT total_cves AS value FROM dashboard_stats;"
+          "rawSql": "SELECT total_cves AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -148,7 +158,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT total_findings AS value FROM dashboard_stats;"
+          "rawSql": "SELECT total_findings AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -204,7 +219,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT critical_findings AS value FROM dashboard_stats;"
+          "rawSql": "SELECT critical_findings AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -260,7 +280,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT kev_findings AS value FROM dashboard_stats;"
+          "rawSql": "SELECT kev_findings AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -316,7 +341,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT pending_validations AS value FROM dashboard_stats;"
+          "rawSql": "SELECT pending_validations AS value FROM dashboard_stats;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {
@@ -372,7 +402,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT risk_level AS metric, count AS value FROM risk_distribution;"
+          "rawSql": "SELECT risk_level AS metric, count AS value FROM risk_distribution;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -386,7 +421,7 @@
     {
       "id": 8,
       "type": "table",
-      "title": "Top machines expos\u00e9es",
+      "title": "Top machines exposées",
       "gridPos": {
         "h": 8,
         "w": 16,
@@ -402,7 +437,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT hostname, ip_address::text AS ip, os_name, finding_count, critical_count, high_count, highest_risk FROM top_exposed_assets;"
+          "rawSql": "SELECT hostname, ip_address::text AS ip, os_name, finding_count, critical_count, high_count, highest_risk FROM top_exposed_assets;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -437,7 +477,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT remediation_id, hostname, cve_id, risk_level, software_name, software_version,\n                              LEFT(proposed_action, 140) AS proposed_action, proposed_at\n                       FROM remediation_queue LIMIT 50;"
+          "rawSql": "SELECT remediation_id, hostname, cve_id, risk_level, software_name, software_version,\n                              LEFT(proposed_action, 140) AS proposed_action, proposed_at\n                       FROM remediation_queue LIMIT 50;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -456,7 +501,7 @@
     {
       "id": 10,
       "type": "table",
-      "title": "Approuv\u00e9s \u2014 remediation manuelle \u00e0 faire",
+      "title": "Approuvés — remediation manuelle à faire",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -472,7 +517,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT remediation_id, hostname, cve_id, risk_level, software_name,\n                              recommended_version, validated_by, validated_at\n                       FROM approved_awaiting_manual_fix LIMIT 50;"
+          "rawSql": "SELECT remediation_id, hostname, cve_id, risk_level, software_name,\n                              recommended_version, validated_by, validated_at\n                       FROM approved_awaiting_manual_fix LIMIT 50;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -507,7 +557,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT hostname, software_name, software_version, cve_id, cvss_score, risk_level, detected_at FROM active_kev_findings LIMIT 50;"
+          "rawSql": "SELECT hostname, software_name, software_version, cve_id, cvss_score, risk_level, detected_at FROM active_kev_findings LIMIT 50;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -526,7 +581,7 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Top logiciels vuln\u00e9rables",
+      "title": "Top logiciels vulnérables",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -542,7 +597,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT name, version, vendor, affected_assets, finding_count, critical_count, max_cvss FROM top_vulnerable_software;"
+          "rawSql": "SELECT name, version, vendor, affected_assets, finding_count, critical_count, max_cvss FROM top_vulnerable_software;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -556,6 +616,70 @@
             "filterable": true
           }
         }
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Inventaire hosts (Wazuh Syscollector + seed)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT hostname, ip_address::text AS ip, os_name, os_version, status, last_seen FROM assets ORDER BY last_seen DESC NULLS LAST;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Historique scans (n8n / Engine)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT scan_type, status, records_added, records_updated, started_at, finished_at, LEFT(COALESCE(error_message,''), 80) AS error FROM scan_history ORDER BY started_at DESC LIMIT 20;",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
       }
     }
   ]

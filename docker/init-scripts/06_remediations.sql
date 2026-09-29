@@ -100,8 +100,9 @@ SELECT
     (SELECT COUNT(*) FROM remediations WHERE status IN ('proposed', 'pending_validation', 'approved', 'rejected')) AS total,
     (SELECT COUNT(*) FROM approved_awaiting_manual_fix) AS awaiting_manual_fix;
 
--- Enrichir dashboard_stats avec la file de validation
-CREATE OR REPLACE VIEW dashboard_stats AS
+-- Enrichir dashboard_stats avec la file de validation + dernier scan n8n
+DROP VIEW IF EXISTS dashboard_stats;
+CREATE VIEW dashboard_stats AS
 SELECT
     (SELECT COUNT(*) FROM assets WHERE status = 'active') AS total_assets,
     (SELECT COUNT(*) FROM assets) AS total_assets_all,
@@ -117,7 +118,9 @@ SELECT
     (SELECT COUNT(*) FROM cves WHERE kev = true) AS kev_count,
     (SELECT COUNT(*) FROM findings WHERE status = 'active' AND cve_id IN (SELECT id FROM cves WHERE kev = true)) AS kev_findings,
     (SELECT COUNT(*) FROM remediations WHERE status = 'pending_validation') AS pending_validations,
-    (SELECT COUNT(*) FROM approved_awaiting_manual_fix) AS awaiting_manual_fix;
+    (SELECT COUNT(*) FROM approved_awaiting_manual_fix) AS awaiting_manual_fix,
+    (SELECT status FROM scan_history WHERE scan_type = 'daily_scan' ORDER BY started_at DESC LIMIT 1) AS last_daily_scan_status,
+    (SELECT finished_at FROM scan_history WHERE scan_type = 'daily_scan' ORDER BY started_at DESC LIMIT 1) AS last_daily_scan_at;
 
 -- Génère des propositions de correctifs pour les findings actifs sans remediation
 -- IMPORTANT : ne fait AUCUNE application de patch

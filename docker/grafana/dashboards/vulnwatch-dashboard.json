@@ -36,12 +36,16 @@
       },
       "id": 1,
       "options": {
-        "content": "# \ud83d\udee1\ufe0f VulnWatch SOC - Dashboard de Surveillance\n## Corr\u00e9lation des vuln\u00e9rabilit\u00e9s en temps r\u00e9el",
+        "content": "# 🛡️ VulnWatch SOC - Dashboard de Surveillance\n## Corrélation des vulnérabilités en temps réel",
         "mode": "markdown"
       },
       "pluginVersion": "10.0.0",
       "title": "VulnWatch SOC",
-      "type": "text"
+      "type": "text",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -113,11 +117,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udda5\ufe0f Machines",
-      "type": "stat"
+      "title": "🖥️ Machines",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -189,11 +198,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udce6 Logiciels",
-      "type": "stat"
+      "title": "📦 Logiciels",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -265,11 +279,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udd0d CVE",
-      "type": "stat"
+      "title": "🔍 CVE",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -341,11 +360,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\u26a0\ufe0f Findings",
-      "type": "stat"
+      "title": "⚠️ Findings",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -417,11 +441,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udd34 Critiques",
-      "type": "stat"
+      "title": "🔴 Critiques",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -493,11 +522,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udfe0 \u00c9lev\u00e9es",
-      "type": "stat"
+      "title": "🟠 Élevées",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -569,11 +603,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udfe1 Moyennes",
-      "type": "stat"
+      "title": "🟡 Moyennes",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -645,11 +684,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udd35 Basses",
-      "type": "stat"
+      "title": "🔵 Basses",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -747,11 +791,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udcc8 \u00c9volution des risques (30 jours)",
-      "type": "timeseries"
+      "title": "📈 Évolution des risques (30 jours)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -830,11 +879,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83e\udde9 Distribution des risques",
-      "type": "piechart"
+      "title": "🧩 Distribution des risques",
+      "type": "piechart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -949,11 +1003,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udd25 Top machines expos\u00e9es",
-      "type": "table"
+      "title": "🔥 Top machines exposées",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -1068,11 +1127,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udce6 Top logiciels vuln\u00e9rables",
-      "type": "table"
+      "title": "📦 Top logiciels vulnérables",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "fieldConfig": {
@@ -1191,11 +1255,16 @@
               }
             ],
             "limit": 50
-          }
+          },
+          "editorMode": "code"
         }
       ],
-      "title": "\ud83d\udd34 KEV actives (Known Exploited Vulnerabilities)",
-      "type": "table"
+      "title": "🔴 KEV actives (Known Exploited Vulnerabilities)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      }
     },
     {
       "type": "table",
@@ -1216,7 +1285,12 @@
           "format": "table",
           "rawSql": "SELECT hostname, cve_id, risk_level, software_name, software_version, LEFT(proposed_action, 120) AS proposed_action, proposed_at FROM remediation_queue LIMIT 50;",
           "rawQuery": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -1242,7 +1316,12 @@
           "format": "table",
           "rawSql": "SELECT hostname, cve_id, risk_level, software_name, recommended_version, validated_by, validated_at FROM approved_awaiting_manual_fix LIMIT 50;",
           "rawQuery": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "options": {
@@ -1268,7 +1347,12 @@
           "format": "table",
           "rawSql": "SELECT pending_validations FROM dashboard_stats;",
           "rawQuery": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "editorMode": "code"
         }
       ],
       "fieldConfig": {

@@ -14,24 +14,40 @@ DECLARE
     v_process INTEGER := 0;
 BEGIN
     -- 1. Nettoyer les findings obsolètes
-    UPDATE findings 
-    SET status = 'mitigated' 
-    WHERE status = 'active' 
+    -- Findings logiciels : software absent / trop vieux
+    -- Findings process (software_id NULL) : plus de process RUNNING correspondant
+    UPDATE findings
+    SET status = 'mitigated'
+    WHERE status = 'active'
     AND (
         NOT EXISTS (
-            SELECT 1 FROM software s 
-            WHERE s.id = findings.software_id 
-            AND s.last_seen > NOW() - INTERVAL '2 days'
-        )
-        OR NOT EXISTS (
-            SELECT 1 FROM assets a 
-            WHERE a.id = findings.asset_id 
+            SELECT 1 FROM assets a
+            WHERE a.id = findings.asset_id
             AND a.status = 'active'
+        )
+        OR (
+            findings.software_id IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM software s
+                WHERE s.id = findings.software_id
+                AND s.last_seen > NOW() - INTERVAL '2 days'
+            )
+        )
+        OR (
+            findings.software_id IS NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM processes p
+                WHERE p.asset_id = findings.asset_id
+                AND p.status = 'RUNNING'
+                AND p.last_seen > NOW() - INTERVAL '2 days'
+                AND findings.notes = 'Process: ' || p.name
+            )
         )
     );
     
     -- 2. Corrélation sur les logiciels installés
-    WITH new_correlations AS (
+    DROP TABLE IF EXISTS tmp_new_correlations;
+    CREATE TEMP TABLE tmp_new_correlations ON COMMIT DROP AS
         SELECT DISTINCT
             a.id AS asset_id,
             s.id AS software_id,
@@ -66,8 +82,8 @@ BEGIN
             )
         )
         WHERE a.status = 'active'
-        AND s.last_seen > NOW() - INTERVAL '2 days'
-    )
+        AND s.last_seen > NOW() - INTERVAL '2 days';
+
     INSERT INTO findings (asset_id, software_id, cve_id, risk_level, cvss_at_detection)
     SELECT 
         nc.asset_id, 
@@ -75,16 +91,25 @@ BEGIN
         nc.cve_id, 
         nc.risk_level, 
         nc.cvss_at_detection
-    FROM new_correlations nc
+    FROM tmp_new_correlations nc
     WHERE NOT EXISTS (
-        SELECT 1 FROM findings f 
-        WHERE f.asset_id = nc.asset_id 
-        AND f.software_id = nc.software_id 
+        SELECT 1 FROM findings f
+        WHERE f.asset_id = nc.asset_id
+        AND f.software_id = nc.software_id
         AND f.cve_id = nc.cve_id
-        AND f.status = 'active'
     );
-    
+
     GET DIAGNOSTICS v_new = ROW_COUNT;
+
+    UPDATE findings f
+    SET status = 'active',
+        risk_level = nc.risk_level,
+        cvss_at_detection = nc.cvss_at_detection
+    FROM tmp_new_correlations nc
+    WHERE f.asset_id = nc.asset_id
+      AND f.software_id = nc.software_id
+      AND f.cve_id = nc.cve_id
+      AND f.status <> 'active';
     
     -- 3. Mettre à jour les niveaux de risque existants
     UPDATE findings f
@@ -127,7 +152,11 @@ BEGIN
             'Process: ' || p.name AS notes
         FROM assets a
         JOIN processes p ON a.id = p.asset_id
-        JOIN cves c ON p.name ILIKE '%' || c.product || '%'
+        JOIN cves c ON (
+            c.product IS NOT NULL
+            AND length(trim(c.product)) > 1
+            AND p.name ILIKE '%' || c.product || '%'
+        )
         WHERE a.status = 'active'
         AND p.status = 'RUNNING'
     )
@@ -225,7 +254,21 @@ BEGIN
         COUNT(CASE WHEN f.risk_level = 'HIGH' THEN 1 END)::INTEGER AS high_count,
         COUNT(CASE WHEN f.risk_level = 'MEDIUM' THEN 1 END)::INTEGER AS medium_count,
         COUNT(CASE WHEN f.risk_level = 'LOW' THEN 1 END)::INTEGER AS low_count,
-        MAX(f.risk_level) AS highest_risk
+        CASE MAX(
+            CASE f.risk_level
+                WHEN 'CRITICAL' THEN 4
+                WHEN 'HIGH' THEN 3
+                WHEN 'MEDIUM' THEN 2
+                WHEN 'LOW' THEN 1
+                ELSE 0
+            END
+        )
+            WHEN 4 THEN 'CRITICAL'
+            WHEN 3 THEN 'HIGH'
+            WHEN 2 THEN 'MEDIUM'
+            WHEN 1 THEN 'LOW'
+            ELSE NULL
+        END AS highest_risk
     FROM assets a
     LEFT JOIN findings f ON a.id = f.asset_id AND f.status = 'active'
     WHERE a.hostname = asset_hostname
